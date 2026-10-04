@@ -9,6 +9,22 @@
     /* Theme token for inline styles that can't use Tailwind classes
        (e.g. dynamic gradients). Single source: tailwind.config.js. */
     --color-primary-500: theme('colors.primary.500');
+
+    /* Gray 600-950 as RGB channels (used by tailwind.config.js). Light mode: zinc */
+    --gray-600: 82 82 91;
+    --gray-700: 63 63 70;
+    --gray-800: 39 39 42;
+    --gray-900: 24 24 27;
+    --gray-950: 9 9 11;
+  }
+
+  /* Dark mode grays: GitHub Dark palette (900 = page, 800 = cards, 700 = hover/borders, 600 = input borders) */
+  .dark {
+    --gray-600: 48 54 61;
+    --gray-700: 33 38 45;
+    --gray-800: 22 27 34;
+    --gray-900: 13 17 23;
+    --gray-950: 1 4 9;
   }
 
   body {
