@@ -95,10 +95,10 @@
             <div class="text-label mb-1">Win Rate</div>
             <div class="mt-auto pt-1">
               <div class="text-mono-num text-lg @sm:text-xl @3xl:text-2xl @4xl:text-3xl font-semibold tracking-tight" :class="winRateClass">
-                {{ totalTrades > 0 ? winRate + '%' : '—' }}<span v-if="totalTrades > 0" class="text-xs font-normal text-gray-500 dark:text-gray-400"> incl. BE</span>
+                {{ totalTrades > 0 ? winRate + '%' : '—' }}<span v-if="totalTrades > 0" class="text-xs font-normal text-gray-500 dark:text-gray-400"> excl. BE</span>
               </div>
               <div class="text-xs text-gray-500 dark:text-gray-400 text-mono-num mt-0.5 truncate">
-                <span v-if="totalTrades > 0">{{ winningTrades }}W · {{ losingTrades }}L<span v-if="breakevenTrades > 0"> · {{ winRateExcludingBe }}% excl. BE</span></span>
+                <span v-if="totalTrades > 0">{{ winningTrades }}W · {{ losingTrades }}L<span v-if="breakevenTrades > 0"> · {{ winRateIncludingBe }}% incl. BE</span></span>
                 <span v-else>—</span>
               </div>
             </div>
@@ -215,16 +215,17 @@ const losingTrades = computed(() => parseInt(summary.value.losingTrades) || 0)
 const tradingDays = computed(() => parseInt(summary.value.tradingDays) || 0)
 const totalCosts = computed(() => parseFloat(summary.value.totalCosts) || 0)
 
+// Primary win rate: decisive (non-breakeven) trades only.
 const winRate = computed(() => {
-  if (totalTrades.value === 0) return 0
-  return ((winningTrades.value / totalTrades.value) * 100).toFixed(1)
-})
-
-// Win rate among decisive (non-breakeven) trades only.
-const winRateExcludingBe = computed(() => {
   const decisive = winningTrades.value + losingTrades.value
   if (decisive === 0) return 0
   return ((winningTrades.value / decisive) * 100).toFixed(1)
+})
+
+// Secondary win rate with breakeven trades counted in the denominator.
+const winRateIncludingBe = computed(() => {
+  if (totalTrades.value === 0) return 0
+  return ((winningTrades.value / totalTrades.value) * 100).toFixed(1)
 })
 const breakevenTrades = computed(() => parseInt(summary.value.breakevenTrades) || 0)
 

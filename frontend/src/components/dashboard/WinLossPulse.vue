@@ -59,7 +59,7 @@
               {{ winRateVerdict }}
             </div>
             <div v-if="breakeven > 0" class="mt-0.5 text-[10px] text-gray-400 dark:text-gray-500">
-              {{ winRateExcludingBe.toFixed(0) }}% excl. BE
+              {{ winRateIncludingBe.toFixed(0) }}% incl. BE
             </div>
           </div>
         </div>
@@ -195,17 +195,18 @@ const losing = computed(() => parseInt(props.summary.losingTrades) || 0)
 const breakeven = computed(() => parseInt(props.summary.breakevenTrades) || 0)
 const totalTrades = computed(() => winning.value + losing.value + breakeven.value)
 
-const winRate = computed(() => {
-  if (totalTrades.value === 0) return 0
-  return (winning.value / totalTrades.value) * 100
-})
-
-// Win rate among decisive (non-breakeven) trades only. Breakeven here means
+// Primary win rate: decisive (non-breakeven) trades only. Breakeven here means
 // gross P&L = 0, classified server-side; this just divides by wins + losses.
-const winRateExcludingBe = computed(() => {
+const winRate = computed(() => {
   const decisive = winning.value + losing.value
   if (decisive === 0) return 0
   return (winning.value / decisive) * 100
+})
+
+// Secondary win rate with breakeven trades counted in the denominator.
+const winRateIncludingBe = computed(() => {
+  if (totalTrades.value === 0) return 0
+  return (winning.value / totalTrades.value) * 100
 })
 
 const winRateClass = computed(() => {
