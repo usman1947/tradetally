@@ -70,6 +70,23 @@
             <ChartPieIcon class="h-4 w-4" />
             Allocate
           </button>
+          <input
+            ref="screenshotInput"
+            type="file"
+            multiple
+            accept="image/jpeg,image/jpg,image/png,image/webp"
+            class="hidden"
+            @change="handleScreenshotSelect"
+          />
+          <button
+            type="button"
+            class="btn-secondary inline-flex items-center gap-2"
+            :disabled="uploadingScreenshots"
+            @click="screenshotInput?.click()"
+          >
+            <PhotoIcon class="h-4 w-4" />
+            <span>{{ uploadingScreenshots ? 'Uploading...' : 'Add Screenshot' }}</span>
+          </button>
           <router-link :to="{ path: `/trades/${trade.id}/edit`, query: { from: 'trade-detail' } }" class="btn-secondary">
             Edit
           </router-link>
@@ -1671,7 +1688,7 @@ import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
 import { useUserTimezone } from '@/composables/useUserTimezone'
 import { format, formatDistanceToNow, formatDistance } from 'date-fns'
-import { ChartPieIcon, DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon, TrashIcon, PlayIcon } from '@heroicons/vue/24/outline'
+import { ChartPieIcon, DocumentIcon, ChatBubbleLeftIcon, SparklesIcon, ShareIcon, TrashIcon, PlayIcon, PhotoIcon } from '@heroicons/vue/24/outline'
 import { useCurrencyFormatter } from '@/composables/useCurrencyFormatter'
 import api from '@/services/api'
 import { useAuthStore } from '@/stores/auth'
@@ -3022,6 +3039,51 @@ function deleteStoredAIAnalysis(analysis) {
       }
     }
   )
+}
+
+const screenshotInput = ref(null)
+const uploadingScreenshots = ref(false)
+
+async function handleScreenshotSelect(event) {
+  const files = Array.from(event.target.files || [])
+  event.target.value = ''
+  if (files.length === 0 || !trade.value) return
+
+  if (files.length > 10) {
+    showError('Too Many Files', 'You can upload up to 10 screenshots at a time')
+    return
+  }
+
+  const supportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
+  const invalid = files.find(file => !supportedTypes.includes(file.type) || file.size > 50 * 1024 * 1024)
+  if (invalid) {
+    showError('Invalid File', `${invalid.name} must be a JPEG, PNG, or WebP image up to 50MB`)
+    return
+  }
+
+  uploadingScreenshots.value = true
+  try {
+    const formData = new FormData()
+    files.forEach(file => formData.append('images', file))
+
+    const response = await api.post(`/trades/${trade.value.id}/images`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' }
+    })
+
+    const uploaded = (response.data.images || []).filter(img => !img.error)
+    trade.value.attachments = [...(trade.value.attachments || []), ...uploaded]
+
+    const total = response.data.totalImages || files.length
+    if (uploaded.length === total) {
+      showSuccess('Success', `${uploaded.length} screenshot${uploaded.length === 1 ? '' : 's'} uploaded`)
+    } else {
+      showError('Partial Success', `${uploaded.length} of ${total} screenshots uploaded`)
+    }
+  } catch (error) {
+    showError('Upload Failed', error.response?.data?.error || 'Failed to upload screenshots')
+  } finally {
+    uploadingScreenshots.value = false
+  }
 }
 
 function handleImageDeleted(imageId) {
