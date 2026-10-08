@@ -42,8 +42,9 @@
             {{ formatSignedCurrency(month.totalPnl) }}
           </span>
         </div>
-        <!-- 7-col grid with day-of-week header -->
-        <div class="grid grid-cols-7 gap-1">
+        <!-- 7-col grid with day-of-week header. @container so the per-day
+             P&L labels only show once the grid is wide enough to fit them. -->
+        <div class="@container grid grid-cols-7 gap-1">
           <div
             v-for="dow in ['S', 'M', 'T', 'W', 'T', 'F', 'S']"
             :key="`dow-${dow}-${month.year}-${month.month}`"
@@ -64,6 +65,13 @@
               :title="cell.tooltip"
               @click="onCellClick(cell)"
             >
+              <span
+                v-if="cell.hasTrades"
+                class="hidden @[18rem]:flex absolute inset-0 items-center justify-center text-[9px] leading-none font-semibold text-mono-num"
+                :class="cell.pnl === 0 ? 'text-gray-700' : 'text-white'"
+              >
+                {{ cell.label }}
+              </span>
               <span
                 v-if="cell.isToday"
                 class="absolute -top-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-primary-500"
@@ -138,6 +146,13 @@ function colorFor(pnl) {
   if (pnl > 0) return '#16a34a' // green-600
   if (pnl < 0) return '#dc2626' // red-600
   return 'rgb(229, 231, 235)'   // gray-200, breakeven
+}
+
+// Short label that fits inside a day cell: "+$85", "-$420", "+$1.2K".
+function compactPnl(pnl) {
+  const maximumFractionDigits = Math.abs(pnl) >= 1000 ? 1 : 0
+  return formatSignedCurrency(pnl, { compact: true, minimumFractionDigits: 0, maximumFractionDigits })
+    .replace(/\.0(?=[KMBT])/, '')
 }
 
 function emptyCellColor() {
@@ -217,6 +232,7 @@ const months = computed(() => {
         count,
         color,
         tooltip,
+        label: entry ? compactPnl(pnl) : '',
         isToday: dateStr === todayStr.value,
         hasTrades: !!entry
       })
