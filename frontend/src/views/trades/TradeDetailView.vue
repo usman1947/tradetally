@@ -1,8 +1,8 @@
 <template>
   <div class="content-wrapper py-8">
     <!-- Back Button -->
-    <div class="mb-6">
-      <button 
+    <div class="mb-6 flex items-center justify-between">
+      <button
         @click="$router.go(-1)"
         class="inline-flex items-center text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
       >
@@ -11,13 +11,36 @@
         </svg>
         <span class="ml-1 text-sm">Back</span>
       </button>
+
+      <!-- Prev/next trade (also ← / → keys) -->
+      <div v-if="navIndex >= 0" class="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+        <button
+          type="button"
+          :disabled="!olderTradeId"
+          title="Older trade (←)"
+          class="rounded-md border border-gray-300 dark:border-gray-600 px-2 py-1 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          @click="goToTrade(olderTradeId)"
+        >
+          &larr; Prev
+        </button>
+        <span class="tabular-nums">{{ navIds.length - navIndex }} of {{ navIds.length }}</span>
+        <button
+          type="button"
+          :disabled="!newerTradeId"
+          title="Newer trade (→)"
+          class="rounded-md border border-gray-300 dark:border-gray-600 px-2 py-1 hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-40 disabled:cursor-not-allowed"
+          @click="goToTrade(newerTradeId)"
+        >
+          Next &rarr;
+        </button>
+      </div>
     </div>
 
     <div v-if="loading" class="flex justify-center py-12">
       <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-primary-600"></div>
     </div>
 
-    <div v-else-if="trade" class="space-y-8">
+    <div v-else-if="trade" :key="trade.id" class="space-y-8">
       <!-- Header -->
       <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div class="flex items-center gap-3">
@@ -541,6 +564,16 @@
               </dl>
             </div>
           </div>
+
+          <!-- Trade Images -->
+          <TradeImages
+            v-model:viewer-open="imageViewerOpen"
+            :trade-id="trade.id"
+            :images="trade.attachments || []"
+            :can-delete="trade.user_id === authStore.user?.id"
+            :caption="imageViewerCaption"
+            @deleted="handleImageDeleted"
+          />
 
           <!-- Setup Quality Breakdown -->
           <div v-if="trade.qualityMetrics" class="card">
@@ -1365,14 +1398,6 @@
             @deleted="handleChartDeleted"
           />
 
-          <!-- Trade Images -->
-          <TradeImages
-            :trade-id="trade.id"
-            :images="trade.attachments || []"
-            :can-delete="trade.user_id === authStore.user?.id"
-            @deleted="handleImageDeleted"
-          />
-
           <!-- Comments (Collapsible) -->
           <div class="card">
             <div class="card-body">
@@ -1682,7 +1707,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onBeforeUnmount, nextTick, computed, reactive, defineAsyncComponent } from 'vue'
+import { ref, onMounted, onBeforeUnmount, nextTick, computed, reactive, watch, defineAsyncComponent } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useTradesStore } from '@/stores/trades'
 import { useNotification } from '@/composables/useNotification'
@@ -2945,11 +2970,18 @@ async function calculateQuality() {
   }
 }
 
-async function loadTrade() {
+let loadTradeSeq = 0
+
+// background: switching trades via prev/next keeps the current trade on screen
+// until the next one arrives instead of flashing the full-page spinner.
+async function loadTrade({ background = false } = {}) {
+  const seq = ++loadTradeSeq
   try {
-    loading.value = true
+    if (!background) loading.value = true
     chartImageFailed.value = false // Reset chart image state for new trade
-    trade.value = await tradesStore.fetchTrade(route.params.id)
+    const loaded = await tradesStore.fetchTrade(route.params.id)
+    if (seq !== loadTradeSeq) return // a newer prev/next press superseded this load
+    trade.value = loaded
     if (!trade.value.setupQuality) {
       trade.value.setupQuality = {
         grade: trade.value.qualityGrade || null,
@@ -2967,6 +2999,7 @@ async function loadTrade() {
       loadTradeAllocationFeature()
     }
   } catch (error) {
+    if (seq !== loadTradeSeq) return
     // A guest hitting a private/non-existent trade gets a 404; send them to login
     // (the owner can sign in and come back). Authenticated users go to their list.
     if (!authStore.isAuthenticated) {
@@ -3117,11 +3150,73 @@ onMounted(async () => {
   )
   window.addEventListener('pagehide', saveTradeDetailScroll)
 
+  window.addEventListener('keydown', handleTradeNavKeydown)
+
   await loadTrade()
   if (trade.value) await restoreTradeDetailScroll(saved_scroll_y)
+  if (isOwner.value) loadTradeNavigation()
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('pagehide', saveTradeDetailScroll)
+  window.removeEventListener('keydown', handleTradeNavKeydown)
+})
+
+// Prev/next trade navigation, following the trade list's filters.
+// The list is newest first, so "older" is the next index and "newer" the previous one.
+const navIds = ref([])
+const navIndex = computed(() => (trade.value ? navIds.value.indexOf(trade.value.id) : -1))
+const olderTradeId = computed(() => (navIndex.value >= 0 ? navIds.value[navIndex.value + 1] ?? null : null))
+const newerTradeId = computed(() => (navIndex.value > 0 ? navIds.value[navIndex.value - 1] : null))
+
+async function loadTradeNavigation() {
+  try {
+    navIds.value = await tradesStore.fetchTradeIds()
+  } catch (error) {
+    console.warn('Failed to load trade navigation:', error)
+    navIds.value = []
+  }
+}
+
+// Lives here rather than in TradeImages (which remounts per trade) so an open
+// screenshot viewer stays open while ← / → move between trades.
+const imageViewerOpen = ref(false)
+const imageViewerCaption = computed(() => {
+  if (!trade.value) return ''
+  const parts = [trade.value.symbol, formatDate(trade.value.trade_date), trade.value.side]
+  if (trade.value.pnl !== null && trade.value.pnl !== undefined) parts.push(formatTradeCurrency(trade.value.pnl))
+  return parts.join(' · ')
+})
+
+// replace, not push: the Back button (history -1) should still return to the list.
+function goToTrade(id) {
+  if (id) router.replace(`/trades/${id}`)
+}
+
+function handleTradeNavKeydown(event) {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+  if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return
+  const el = event.target
+  if (el?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el?.tagName)) return
+  event.preventDefault()
+  goToTrade(event.key === 'ArrowLeft' ? olderTradeId.value : newerTradeId.value)
+}
+
+watch(() => route.params.id, (id, oldId) => {
+  if (!id || id === oldId || route.name !== 'trade-detail') return
+  // Per-trade UI state that loadTrade doesn't reset.
+  splitMode.value = false
+  selectedExecutions.value = new Set()
+  showAIPanel.value = false
+  showShareCard.value = false
+  showAllocationModal.value = false
+  storedAIExpanded.value = false
+  selectedAdherencePlaybookId.value = ''
+  selectedManualGradingProfileId.value = ''
+  newComment.value = ''
+  editingCommentId.value = null
+  editCommentText.value = ''
+  window.scrollTo({ top: 0 })
+  loadTrade({ background: true })
 })
 </script>

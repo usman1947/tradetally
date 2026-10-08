@@ -52,6 +52,20 @@ describe('trades store request params', () => {
     }
   })
 
+  it('fetches every trade id matching the list filters for prev/next navigation', async () => {
+    const store = await loadStore()
+    store.setFilters({ symbol: 'AAPL', tags: ['gap'] })
+
+    api.get.mockResolvedValue({ data: { trades: [{ id: 'b' }, { id: 'a' }] } })
+    const ids = await store.fetchTradeIds()
+
+    expect(ids).toEqual(['b', 'a'])
+    const [url, config] = api.get.mock.calls[0]
+    expect(url).toBe('/trades')
+    expect(config.params).toMatchObject({ symbol: 'AAPL', tags: 'gap', offset: 0, skipCount: 'true' })
+    expect(config.params.limit).toBeGreaterThan(store.pagination.limit)
+  })
+
   it('drops empty array filters from request params', async () => {
     const store = await loadStore()
     store.setFilters({ tags: [], strategies: ['breakout'] })

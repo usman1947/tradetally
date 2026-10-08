@@ -1,11 +1,11 @@
 <template>
-  <div v-if="images.length > 0" class="space-y-4">
-    <h3 class="text-lg font-medium text-gray-900 dark:text-white">
+  <div v-if="images.length > 0 || viewerImageOpen" class="space-y-4">
+    <h3 v-if="images.length > 0" class="text-lg font-medium text-gray-900 dark:text-white">
       Trade Images
     </h3>
-    
+
     <!-- Full size images display -->
-    <div class="space-y-6">
+    <div v-if="images.length > 0" class="space-y-6">
       <div
         v-for="image in images"
         :key="image.id"
@@ -59,17 +59,30 @@
 
     <!-- Image modal -->
     <div
-      v-if="selectedImage"
+      v-if="viewerImageOpen"
       class="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-75"
       @click="closeImage"
     >
-      <div class="relative max-w-4xl max-h-full p-4">
+      <div class="relative">
+        <div
+          v-if="!selectedImage"
+          class="w-[96vw] h-[96vh] flex items-center justify-center text-gray-300 text-lg"
+        >
+          No screenshot for this trade
+        </div>
+        <div
+          v-else-if="!authedImage.urlFor(selectedImage)"
+          class="w-[96vw] h-[96vh] flex items-center justify-center"
+        >
+          <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-white"></div>
+        </div>
         <img
+          v-else
           :src="authedImage.urlFor(selectedImage)"
           :alt="selectedImage.file_name"
-          class="max-w-full max-h-full object-contain"
+          class="w-[96vw] h-[96vh] object-contain"
         />
-        
+
         <!-- Close button -->
         <button
           type="button"
@@ -83,8 +96,11 @@
 
         <!-- Image info -->
         <div class="absolute bottom-4 left-4 bg-black bg-opacity-50 text-white px-3 py-2 rounded">
-          <p class="text-sm font-medium">{{ selectedImage.file_name }}</p>
-          <p class="text-xs opacity-75">{{ formatFileSize(selectedImage.file_size) }}</p>
+          <p v-if="caption" class="text-sm font-semibold">{{ caption }}</p>
+          <template v-if="selectedImage">
+            <p class="text-sm font-medium">{{ selectedImage.file_name }}</p>
+            <p class="text-xs opacity-75">{{ formatFileSize(selectedImage.file_size) }}</p>
+          </template>
         </div>
       </div>
     </div>
@@ -144,7 +160,7 @@
 </template>
 
 <script setup>
-import { ref, toRef } from 'vue'
+import { ref, toRef, onMounted, onBeforeUnmount } from 'vue'
 import { useNotification } from '@/composables/useNotification'
 import { useAuthedImage } from '@/composables/useAuthedImage'
 import api from '@/services/api'
@@ -161,25 +177,48 @@ const props = defineProps({
   canDelete: {
     type: Boolean,
     default: false
+  },
+  // Optional v-model:viewer-open. The trade page binds it so the viewer stays
+  // open (showing the first image) when it switches to another trade.
+  viewerOpen: {
+    type: Boolean,
+    default: false
+  },
+  // Shown in the viewer, e.g. which trade the screenshot belongs to.
+  caption: {
+    type: String,
+    default: ''
   }
 })
 
-const emit = defineEmits(['deleted'])
+const emit = defineEmits(['deleted', 'update:viewerOpen'])
 
 const { showSuccess, showError } = useNotification()
 
-const selectedImage = ref(null)
+const viewerImageOpen = ref(props.viewerOpen)
+const selectedImage = ref(props.viewerOpen ? props.images[0] || null : null)
 const imageToDelete = ref(null)
 
 const authedImage = useAuthedImage(toRef(props, 'images'))
 
 function openImage(image) {
   selectedImage.value = image
+  viewerImageOpen.value = true
+  emit('update:viewerOpen', true)
 }
 
 function closeImage() {
   selectedImage.value = null
+  viewerImageOpen.value = false
+  emit('update:viewerOpen', false)
 }
+
+function handleViewerKeydown(event) {
+  if (event.key === 'Escape' && viewerImageOpen.value) closeImage()
+}
+
+onMounted(() => window.addEventListener('keydown', handleViewerKeydown))
+onBeforeUnmount(() => window.removeEventListener('keydown', handleViewerKeydown))
 
 function deleteImage(image) {
   imageToDelete.value = image

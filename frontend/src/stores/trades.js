@@ -405,6 +405,16 @@ export const useTradesStore = defineStore('trades', () => {
     }
   }
 
+  // Ids of every trade matching the list filters, in list order (newest first).
+  // The trade page uses it for prev/next navigation.
+  async function fetchTradeIds() {
+    const response = await api.get('/trades', {
+      params: { ...buildRequestParams(), limit: 100000, offset: 0, skipCount: 'true' }
+    })
+    const rows = response.data?.trades ?? response.data ?? []
+    return rows.map(t => t.id)
+  }
+
   async function fetchTrade(id, { raw = false } = {}) {
     loading.value = true
     error.value = null
@@ -757,6 +767,7 @@ export const useTradesStore = defineStore('trades', () => {
     fetchRoundTripTrades,
     fetchAnalytics,
     fetchTrade,
+    fetchTradeIds,
     createTrade,
     updateTrade,
     deleteTrade,
