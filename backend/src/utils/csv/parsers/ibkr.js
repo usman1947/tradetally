@@ -786,6 +786,12 @@ async function parseIBKRTransactions(records, existingPositions = {}, tradeGroup
           console.log(`  → Skipping duplicate execution: ${newExecution.action} ${newExecution.quantity} @ $${newExecution.price}`);
           // Skip position and value updates for duplicate transactions
           console.log(`  Position: ${currentPosition} (unchanged - duplicate)`);
+          // A trade this duplicate just started is still empty. Drop it so the next
+          // new execution starts its own trade with its own date and side instead of
+          // inheriting the already-imported fill's (sync windows overlap old fills).
+          if (!currentTrade.isExistingPosition && currentTrade.executions.length === 0) {
+            currentTrade = null;
+          }
           continue;
         }
       }
